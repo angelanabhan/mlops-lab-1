@@ -1,64 +1,223 @@
-# Question 1 — What do the files created by `uv init` contain?
+# Lab 1
 
-For this lab, `uv init` created the structure of an installable Python project named `mlops-lab-1`. The generated files define its configuration, select a Python version, provide a place for documentation, and include a small working program.
+## Question 1 — What do the files created by `uv init` contain?
 
-## 1. `pyproject.toml` — Project configuration
+When we run `uv init`, it creates the basic files needed for a Python project:
 
-This is the project's main configuration file. It describes the package and tells Python tools how to build and install it. In this project, it contains three sections:
+* **`pyproject.toml`** — contains information about the project, such as its name, Python version, and dependencies.
+* **`.python-version`** — tells the project which Python version to use.
+* **`README.md`** — contains information and documentation about the project.
+* **`src/lab/__init__.py`** — contains Python code and makes `lab` a Python package.
+* **`.venv/`** — the virtual environment containing Python and the packages installed for the project.
 
-| Section | Contents and purpose |
-| --- | --- |
-| `[project]` | Stores metadata such as the project name, version (`0.1.0`), description, author information, and the documentation file (`README.md`). It also declares the supported Python versions and runtime dependencies. |
-| `[project.scripts]` | Defines the command `mlops-lab-1` and maps it to `mlops_lab_1:main`, meaning the `main()` function in the `mlops_lab_1` package. |
-| `[build-system]` | Selects `uv_build` as the build backend and specifies its required version range. The backend turns the source code into an installable Python package. |
+In simple terms, these files create an organized Python project with its own environment and dependencies.
 
-Two entries in `[project]` are especially relevant:
+---
 
-- **`requires-python = ">=3.10"`** declares that the project supports Python 3.10 or later.
-- **`dependencies = []`** means that no runtime dependencies have been declared yet. Running `uv add <package>` adds a dependency to this list.
+## Question 2 — What files are created by `dvc init` and what should be pushed?
 
-The file records the project's requirements; it does not contain the installed packages themselves.
+Running `dvc init` creates files used to configure DVC:
 
-## 2. `.python-version` — Python version selection
+* **`.dvc/config`** — contains DVC settings, such as the remote storage configuration.
+* **`.dvc/.gitignore`** — tells Git to ignore DVC's cache and temporary files.
+* **`.dvcignore`** — tells DVC which files or folders to ignore.
+* **`.dvc/cache/`** — stores copies of the actual data locally.
+* **`.dvc/tmp/`** — contains temporary files used by DVC.
 
-This file contains a single line:
+We should push `.dvc/config`, `.dvc/.gitignore`, and `.dvcignore` to Git.
 
-```text
-3.10
-```
+We should **not** push `.dvc/cache/` or `.dvc/tmp/`.
 
-It tells uv to select Python 3.10 for this project's environment. This differs from `requires-python`: the latter declares which Python versions the project supports, while `.python-version` selects the version used for local development. The value `3.10` selects a minor version, so it does **not** pin an exact patch release such as `3.10.12`.
+**In simple terms: Git tracks the small configuration files, while DVC manages the large data files.**
 
-## 3. `README.md` — Project documentation
+---
 
-This file is currently empty. It provides a place to explain the project's purpose, installation steps, and usage. The `readme = "README.md"` entry in `pyproject.toml` identifies it as the package's main description file.
+## Question 3 — Where are the credentials stored?
 
-## 4. `src/mlops_lab_1/__init__.py` — Python package source
+Because we used `--global`, the DVC credentials are stored on the user's computer, outside the Git repository.
 
-This file identifies `mlops_lab_1` as a Python package and contains the initial program:
+On Windows, they are usually stored in:
 
-```python
-def main() -> None:
-    print("Hello from mlops-lab-1!")
-```
+`C:\Users\User\AppData\Local\iterative\dvc\config`
 
-The entry in `[project.scripts]` connects the command name to this function. From the project directory, running:
+Other options are:
 
-```sh
-uv run mlops-lab-1
-```
+* **`--project`** — stores settings in `.dvc/config`.
+* **`--local`** — stores settings in `.dvc/config.local` and is useful for secrets specific to one project.
+* **`--global`** — stores settings for the current user.
+* **`--system`** — stores settings for all users on the computer.
 
-prepares the project environment and calls `main()`, which prints `Hello from mlops-lab-1!`.
+### Should credentials be pushed to GitHub?
 
-## Files created later
+No. Passwords and tokens should **never** be pushed to GitHub.
 
-The following are not present immediately after initialization. With normal settings, commands such as `uv sync`, `uv add`, or `uv run` create them as needed:
+The remote URL can be shared, but passwords and tokens should stay in local or global configuration.
 
-| File or directory | Purpose | Commit to Git? |
-| --- | --- | --- |
-| `uv.lock` | Records the resolved dependency versions, including indirect dependencies and platform-specific choices, so subsequent installs can use the same resolution. | Yes |
-| `.venv/` | Holds the local virtual environment, including its Python executable, installed packages, and command scripts. It can be recreated from the project configuration and lockfile. | No — exclude it using `.gitignore`. |
+---
 
-The configuration, documentation, and source files should also be committed to Git. Together with `uv.lock`, they let collaborators recreate the project environment without copying `.venv/`.
+## Question 4 — What happened to `.gitignore`?
 
-Reference: [uv documentation — Project structure and files](https://docs.astral.sh/uv/concepts/projects/layout/).
+When we ran:
+
+`dvc add data`
+
+DVC automatically added:
+
+`/data`
+
+to `.gitignore`.
+
+This tells Git to ignore the `data/` folder because DVC is now responsible for tracking it.
+
+Therefore:
+
+* **DVC tracks the actual dataset.**
+* **Git tracks the small `data.dvc` pointer file.**
+
+This prevents thousands of large image files from being stored directly in Git.
+
+---
+
+## Question 5 — What is the `.dvc` file?
+
+Running:
+
+`dvc add data`
+
+creates:
+
+`data.dvc`
+
+It is a small file containing information about the dataset, such as:
+
+* **`md5`** — a hash identifying the version of the data.
+* **`size`** — the size of the dataset.
+* **`nfiles`** — the number of files.
+* **`path`** — the folder being tracked.
+
+The important idea is that **`data.dvc` acts like a pointer to a specific version of the dataset.**
+
+Git tracks `data.dvc`, while DVC manages the actual large data files.
+
+When someone needs the data, they can run:
+
+`dvc pull`
+
+DVC reads `data.dvc` and downloads the correct version of the dataset.
+
+---
+
+## Question 6 — GitHub Main Branch
+
+### Is the code on GitHub?
+
+Yes. The code and project files are stored on GitHub, such as `src/`, `pyproject.toml`, `README.md`, and the DVC configuration files.
+
+### Is the data on GitHub?
+
+No. The actual `data/` folder is not stored on GitHub because it is ignored by Git and managed by DVC.
+
+### Is there a file that points to the data?
+
+Yes:
+
+`data.dvc`
+
+It contains information that allows DVC to identify the correct version of the dataset.
+
+### Is the data visible on DagsHub?
+
+Yes. The actual dataset is uploaded to the DVC remote on DagsHub using:
+
+`dvc push`
+
+**In simple terms:**
+
+**GitHub → code + `data.dvc` pointer**
+
+**DagsHub → actual dataset**
+
+---
+
+## Question 7 — Fresh Clone
+
+### Do we see the `data/` folder after cloning?
+
+No.
+
+When we run:
+
+`git clone`
+
+Git downloads the files stored in the Git repository, but the actual dataset is managed separately by DVC.
+
+We get the `data.dvc` pointer, but not the actual `data/` folder.
+
+### How do we get the data?
+
+We run:
+
+`dvc pull`
+
+DVC reads `data.dvc`, downloads the correct dataset from the remote storage, and recreates the `data/` folder.
+
+**In simple terms:**
+
+**`git clone` → gets the code and DVC pointer**
+
+**`dvc pull` → gets the actual data**
+
+---
+
+## Question 8 — Do you still see `food11_processed` and `food11_processed_mini`?
+
+No.
+
+After running:
+
+`git checkout 761eea7`
+
+and:
+
+`dvc checkout`
+
+the `data/` folder contains only:
+
+`food11_raw`
+
+The folders:
+
+* `food11_processed`
+* `food11_processed_mini`
+
+are no longer there.
+
+### Why?
+
+The old Git commit was created **before the processed datasets existed**.
+
+`git checkout 761eea7` restores the old version of the `data.dvc` pointer.
+
+Then:
+
+`dvc checkout`
+
+makes the actual `data/` folder match that old pointer.
+
+So the processed folders disappear because they were not part of that older version.
+
+### What does this demonstrate?
+
+Git and DVC work together to restore old versions:
+
+**`git checkout` → restores the old code and `data.dvc` pointer**
+
+**`dvc checkout` → restores the matching old data**
+
+To return to the newest version:
+
+`git checkout main`
+
+`dvc checkout`
+
+This brings the project back to the latest code and data.
