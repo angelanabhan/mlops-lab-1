@@ -1,17 +1,59 @@
-Question 1:The registered model currently used by my API is `food11`, version 2, with the alias `champion`. A run's logged model artifact contains the saved model files associated with a training run. Registering that model creates a named, numbered entry in the Model Registry that references those artifacts and can have aliases and tags for deployment management.
+# Lab 3 Answers
 
-Question 2: Custom aliases such as `champion` and `challenger`, together with model version tags, replace the old fixed stages such as `Staging` and `Production`. These alias names are chosen by the user; they are not mandatory built-in stages. Separate model versions identify deployment candidates, while runs record training parameters, metrics, and artifacts. An alias can be reassigned to another version without changing the URI used by the application. In my setup, `champion` points to version 2. [MLflow documentation](https://www.mlflow.org/docs/latest/ml/model-registry/workflow/)
+## Question 1
 
-Question 3: Loading `models:/food11@champion` lets MLflow resolve the selected registered version and load its saved model format, instead of hard-coding a `.pth` file path. To serve a newer compatible model, I would register it as a new version, move the `champion` alias to that version, and restart the API. A restart is necessary because my API loads the model only once at startup. No API code change or image rebuild is needed if the model's dependencies and input/output requirements remain compatible.
+The first registration of `food11` created **version 1**. My registry now contains versions 1 and 2, and the API currently uses **version 2**, which has the `champion` alias. A run's logged model contains the saved model files and metadata associated with training. Registering it creates a numbered version under a model name, with a reference to those artifacts and the source run. This allows me to manage deployment versions using aliases and tags.
 
-Question 4: Copying `pyproject.toml` and `uv.lock` before installing dependencies lets Docker cache the dependency installation separately from the application code. If I change only `serve.py`, Docker can reuse the dependency layers and rebuild the source-copy layer and subsequent steps. Copying all source files before dependency installation would cause source changes to invalidate that installation layer too, making rebuilds slower. [Docker documentation](https://docs.docker.com/build/cache/)
+## Question 2
 
-Question 5:`docker image ls` reports **2.08 GB** for my multi-stage `food11-api:latest` image. `docker history food11-api:latest` shows that the largest layer is the copied virtual environment, at approximately **1.5 GB**; the source-code layer is only about **53.2 kB**. The runtime stage excludes the builder's `uv` executable and other build-only files, but still needs the installed Python dependencies. I have not built a comparable naive single-stage image, so the exact size difference has not yet been measured. A numerical comparison requires building that image and comparing both images using the same Docker size-reporting command. [Docker documentation](https://docs.docker.com/build/building/multi-stage/)
+Custom aliases such as `champion` and `challenger`, together with model version tags, replace the old fixed stages such as `Staging` and `Production`. These alias names are user-defined, not mandatory built-in stages. Runs record training parameters, metrics, and artifacts; registered versions identify models selected for deployment. An alias is flexible because I can move it to another version without changing the application's model URI. In my setup, `champion` points to version 2. [MLflow documentation](https://www.mlflow.org/docs/latest/ml/model-registry/workflow/)
 
-Question 6: Without `.dockerignore`, large folders such as `data/`, `mlruns/`, and `.venv/` are eligible for inclusion in the build context, which can increase build overhead. They also increase the final image size if copied into it, for example with `COPY . .`. My Dockerfile copies specific files and `src/`, so merely removing `.dockerignore` would not automatically add all those folders to the final image. None of the folders necessarily breaks a build just by being sent to Docker. However, copying my Windows `.venv/` over the Linux environment could make it unusable because its executables and paths are platform-specific. [Docker documentation](https://docs.docker.com/build/building/best-practices/)
+## Question 3
 
-Question 7:By default, a container has its own isolated network, so `127.0.0.1` refers to the container itself. Therefore, `127.0.0.1:5000` would look for MLflow inside the container rather than on my Windows computer. Docker Desktop provides `host.docker.internal`, which resolves to the host's internal IP address and lets the container reach the host's MLflow server on port 5000. The Linux `--network host` example is an exception because it shares the host's network namespace. [Docker documentation](https://docs.docker.com/desktop/features/networking/networking-how-tos/)
+Using `models:/food11@champion` lets MLflow resolve the registered version and load its saved model format, rather than tying the API to a particular `.pth` file path. To serve a newer model, I would register a new version, assign `champion` to it, and restart the API. My `serve.py` loads the model once at startup, so changing the alias does not replace the model already in memory. No API code change or image rebuild is needed if the new model uses compatible dependencies, preprocessing, and inputs and outputs.
 
-Question 8: Yes. After stopping the previous container and creating a new one from `food11-api:latest`, the API loaded the model without rebuilding the image. Testing `Bread/0_15.jpg` returned `{"category":"Bread","confidence":0.5084409713745117}`. The image contains the API code and Python dependencies, while the model weights remain external. At startup, the API resolves `food11@champion` through MLflow and, in my setup, reads the model files through the mounted host folder. The mount is required because the saved artifact location is a Windows file path; the weights are not downloaded over HTTP in this configuration. MLflow and the mounted model files must remain available when starting a new container.
+## Question 4
 
-Question 9: The image must be pushed to a container registry, such as Docker Hub or GitHub Container Registry, so another machine can pull it. A release or Git commit tag identifies the build, but an immutable image digest guarantees the exact image because tags like latest can change. The other machine also needs registry access, a compatible platform, and access to MLflow and the model artifacts. My local Windows folder mount must be replaced with accessible artifact storage.
+Copying `pyproject.toml` and `uv.lock` before installing dependencies lets Docker cache dependency installation separately from the source code. If I change only `serve.py`, Docker can reuse the dependency layers and rebuild the `COPY src/` layer and subsequent steps. If all source files were copied before dependency installation, a source change would invalidate that installation layer too, making rebuilds slower. [Docker documentation](https://docs.docker.com/build/cache/)
+
+## Question 5
+
+I built a single-stage comparison image using `Dockerfile.single-stage`, with the same `python:3.10-slim` base, dependency installation commands, CPU PyTorch packages, and source code as the multi-stage build. It keeps the installation tools and project dependency files in the final image instead of copying only the virtual environment into a separate runtime stage.
+
+Using `docker image ls food11-api`, I measured:
+
+| Image | Build | Reported size |
+| --- | --- | --- |
+| `food11-api:single-stage` | Single-stage | **2.16 GB** |
+| `food11-api:latest` | Multi-stage | **2.08 GB** |
+
+The multi-stage image is approximately **0.08 GB (80 MB) smaller**, a reduction of about **3.7%** relative to the single-stage image. These calculations use Docker's rounded displayed sizes.
+
+`docker history` shows that the largest single-stage layers are the CPU PyTorch installation (**755 MB**) and the other Python dependencies (**746 MB**). In the multi-stage image, these dependencies appear together in the copied virtual environment layer (**about 1.5 GB**). The single-stage image also retains the `uv`/`uvx` layer (**55.3 MB**) and dependency files (**1.05 MB**); the source layer is only **53.2 kB** in both images. The saving is modest because both builds already use a slim base and exclude the download cache through cache mounts, while both still require the large runtime dependencies. [Docker documentation](https://docs.docker.com/build/building/multi-stage/)
+
+Commands used to build the comparison image and inspect both images:
+
+```powershell
+docker build -f Dockerfile.single-stage -t food11-api:single-stage .
+docker image ls food11-api
+docker history food11-api:single-stage
+docker history food11-api:latest
+```
+
+## Question 6
+
+Without `.dockerignore`, folders such as `data/`, `mlruns/`, and `.venv/` become eligible for inclusion in the build context, potentially increasing transfer and processing time. They also enlarge the final image if copied into it, for example with `COPY . .`. My Dockerfile copies only the dependency files and `src/`, so removing `.dockerignore` alone would not add all those folders to the image. None necessarily breaks the build merely by being sent to Docker. However, copying my Windows `.venv/` over the Linux virtual environment could break the application because its executables and paths are platform-specific. [Docker documentation](https://docs.docker.com/build/building/best-practices/)
+
+## Question 7
+
+With Docker's default networking, `127.0.0.1` inside a container refers to that container, not my Windows computer. Therefore, `127.0.0.1:5000` would look for MLflow inside the API container. Docker Desktop provides `host.docker.internal`, which resolves to the host's internal IP address. Setting `MLFLOW_TRACKING_URI=http://host.docker.internal:5000` lets the API reach MLflow on the host. The lab's Linux `--network host` example is different because it shares the host's network namespace. [Docker documentation](https://docs.docker.com/desktop/features/networking/networking-how-tos/)
+
+## Question 8
+
+Yes. In my earlier restart test, a new container created from `food11-api:latest` loaded the model without rebuilding the image. Testing `Bread/0_15.jpg` returned `{"category":"Bread","confidence":0.5084409713745117}`.
+
+The image contains the API code and Python dependencies, while the model weights remain external. At startup, the API resolves `models:/food11@champion` through MLflow. In my setup, the registered artifact location is a Windows file URI, so the container reads the weights through a mounted host folder rather than downloading them over HTTP. Starting a new container therefore requires access to both MLflow and the mounted model files.
+
+## Question 9
+
+I still need to push the image to a container registry, such as Docker Hub or GitHub Container Registry, so another machine can pull it. I would give the image a release or Git commit tag and record its immutable digest to identify the exact image; a tag such as `latest` can change. The other machine also needs registry access, a compatible platform, and access to MLflow and the model artifacts. My local Windows artifact-folder mount must be replaced with storage accessible to that machine. To reproduce the exact model as well as the image, I would also record or pin the registered model version, because `champion` can later point to another version.
