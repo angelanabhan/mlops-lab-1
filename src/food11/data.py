@@ -22,7 +22,7 @@ from PIL import Image
 
 # Label index -> class name. The label is the first part of each raw file name,
 # e.g. "3_87.jpg" is an "Egg" image.
-CATEGORIES = [
+CLASSES = [
     "Bread",            # 0
     "Dairy product",    # 1
     "Dessert",          # 2
@@ -36,6 +36,9 @@ CATEGORIES = [
     "Vegetable-Fruit",  # 10
 ]
 
+# Backward-compatible name used by the serving code.
+CATEGORIES = CLASSES
+
 SPLITS = ["training", "evaluation", "validation"]
 IMAGE_SIZE = (128, 128)
 MINI_PER_CATEGORY = 100
@@ -47,12 +50,25 @@ PROCESSED_DIR = ROOT / "data" / "food11_processed"
 MINI_DIR = ROOT / "data" / "food11_processed_mini"
 
 
-def label_of(path: Path) -> int | None:
-    """Return the integer label encoded at the start of the file name."""
-    stem = path.name.split("_", 1)[0]
-    if stem.isdigit() and 0 <= int(stem) < len(CATEGORIES):
-        return int(stem)
-    return None
+def category_from_filename(filename: str) -> str:
+    """Return the Food-11 category encoded in a filename."""
+    label_text = Path(filename).name.split("_", 1)[0]
+    if not label_text.isdigit():
+        raise ValueError(f"Invalid Food-11 filename: {filename}")
+
+    label = int(label_text)
+    if not 0 <= label < len(CLASSES):
+        raise ValueError(f"Invalid Food-11 label: {label}")
+
+    return CLASSES[label]
+
+
+def resize_image(img: Image.Image, size: int = 128) -> Image.Image:
+    """Return an RGB square image resized to size x size."""
+    return img.convert("RGB").resize(
+        (size, size),
+        Image.Resampling.LANCZOS,
+    )
 
 
 def process_split(split: str) -> None:
@@ -66,14 +82,14 @@ def process_split(split: str) -> None:
     written = mini_written = skipped = 0
 
     for i, src in enumerate(files, start=1):
-        label = label_of(src)
-        if label is None:
+        try:
+            category = category_from_filename(src.name)
+        except ValueError:
             skipped += 1
             continue
-        category = CATEGORIES[label]
 
         with Image.open(src) as img:
-            img = img.convert("RGB").resize(IMAGE_SIZE, Image.LANCZOS)
+            img = resize_image(img, IMAGE_SIZE[0])
 
             full_dst = PROCESSED_DIR / split / category / src.name
             full_dst.parent.mkdir(parents=True, exist_ok=True)

@@ -28,15 +28,21 @@ build-backend = "uv_build"
 
 
 [[tool.uv.index]]
-name = "pytorch-cu130"
-url = "https://download.pytorch.org/whl/cu130"
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
 [tool.uv.sources]
-torch = { index = "pytorch-cu130" }
-torchvision = { index = "pytorch-cu130" }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.4",
     "streamlit>=1.65.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

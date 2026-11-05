@@ -2,13 +2,14 @@
 
 import io
 import os
+from typing import Annotated
 
-import mlflow
-import numpy as np
 import torch
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from PIL import Image
 from torchvision import transforms
+
+import mlflow
 
 from .data import CATEGORIES
 
@@ -34,6 +35,8 @@ model = None
 @app.on_event("startup")
 def load_model():
     global model
+    if os.environ.get("SKIP_MODEL"):
+        return
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     model = mlflow.pyfunc.load_model(MODEL_URI)
 
@@ -44,7 +47,10 @@ def health():
 
 
 @app.post("/predict")
-async def predict(file: UploadFile = File(...)):
+async def predict(file: Annotated[UploadFile, File()]):
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model is not loaded")
+
     image_bytes = await file.read()
     image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
