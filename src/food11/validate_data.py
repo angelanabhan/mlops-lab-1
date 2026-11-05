@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
-from data import CLASSES
+from data import CLASSES  # pyright: ignore[reportMissingImports]
 
 SPLITS = ("training", "validation", "evaluation")
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
